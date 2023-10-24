@@ -155,6 +155,7 @@ void Application::Reset()
 	{
 		m_SelectedArray[i] = 0;
 	}
+	m_RecipeCount = 0;
 	SetTextFile();
 }
 
