@@ -2,7 +2,7 @@
 #include "Application.h"
 #include "Resource.h"
 
-const WCHAR* gTitle = L"TLD Recipes";
+const WCHAR* gTitle = L"TLD Recipe Tracker";
 const WCHAR* gWindowClass = L"MainWindowClass";
 
 static ATOM RegisterWindowClass(HINSTANCE hInstance)
@@ -40,6 +40,29 @@ BOOL Application::Init(HINSTANCE hInstance)
 	if (!hWindow)
 		return FALSE;
 
+	// Graphics Resource Init
+	m_Renderer.Init(hWindow);
+	ID2D1Factory2* factory = m_Renderer.GetFactory();
+	ID2D1DeviceContext* dc = m_Renderer.GetDeviceContext();
+	HR(dc->CreateSolidColorBrush(D2D1::ColorF(0.79f, 0.61f, 0.43f, 1.0f), Brush.ReleaseAndGetAddressOf()));
+
+	m_RecipeCountString = L"Recipes Found: ";
+	m_RecipeStrings[0] = L"Breyerhouse Pie\n";
+	m_RecipeStrings[1] = L"Camber Flight Porridge\n";
+	m_RecipeStrings[2] = L"Coastal Fish Cakes\n";
+	m_RecipeStrings[3] = L"Dockworker's Pie\n";
+	m_RecipeStrings[4] = L"Lily's Pancakes\n";
+	m_RecipeStrings[5] = L"Ranger Stew\n";
+	m_RecipeStrings[6] = L"Stalker's Pie\n";
+	m_RecipeStrings[7] = L"Thomson Family Stew\n";
+
+	std::wstring recipeCountString = m_RecipeCountString + std::to_wstring(m_RecipeCount) + L"\n";
+	m_RecipeCountImage = CreateTextImage(dc, recipeCountString.c_str(), 300.0f, 50.0f, 24.0f, 8.0f);
+	for (int i = 0; i < m_MAXRECIPES; i++)
+	{
+		m_Images[i] = CreateTextImage(dc, m_RecipeStrings[i].c_str(), 300.0f, 50.0f, 24.0f, 8.0f);
+	}
+
 	ShowWindow(hWindow, SW_SHOW);
 	UpdateWindow(hWindow);
 
@@ -59,42 +82,95 @@ int Application::Run()
 	return (int)msg.wParam;
 }
 
-void Application::IncreaseRecipe()
+void Application::Update()
 {
-	m_Recipes++;
-	if (m_Recipes > 8)
+	// Rendering
+	// Skip Drawing if Window is Minimized
+	if (!IsIconic(hWindow))
 	{
-		m_Recipes = 8;
+		ID2D1DeviceContext* dc = m_Renderer.GetDeviceContext();
+		dc->BeginDraw();
+
+		D2D1::ColorF backGroundColor = D2D1::ColorF(0.8f, 0.8f, 0.8f, 1.0f);
+
+		dc->Clear(backGroundColor);
+		dc->SetTransform(D2D1::Matrix3x2F::Identity());
+
+		{
+			D2D_RECT_F Image_Rect = { 0, 0, m_RecipeCountImage.m_Size.width, m_RecipeCountImage.m_Size.height };
+			dc->DrawBitmap(m_RecipeCountImage.m_Bitmap.Get(), Image_Rect, 1.0f);
+		}
+		for (int i = 0; i < m_MAXRECIPES; i++)
+		{
+			float height = i * 50.0f + 50.0f;
+			D2D_RECT_F Rect = { 0, height, m_Images[i].m_Size.width, m_Images[i].m_Size.height + height };
+			if (m_SelectedArray[i])
+			{
+				D2D_RECT_F Rect2 = { 3, height + 3, m_Images[i].m_Size.width - 3, m_Images[i].m_Size.height + height - 3 };
+				dc->FillRectangle(Rect2, Brush.Get());
+			}
+			dc->DrawBitmap(m_Images[i].m_Bitmap.Get(), Rect, 1.0f);
+		}
+
+		HR(dc->EndDraw());
+		HR(m_Renderer.GetSwapChain()->Present(1, 0));
 	}
-	SetTextFile(m_Recipes);
 }
 
-void Application::DecreaseRecipe()
+void Application::SelectRecipe(int index)
 {
-	m_Recipes--;
-	if (m_Recipes < 0)
+	if (index < 0 || index >= m_MAXRECIPES) // return if index out of bounds
+		return;
+
+
+	if (m_SelectedArray[index] == 0)
 	{
-		m_Recipes = 0;
+		++m_RecipeCount;
+		m_SelectedArray[index] = m_RecipeCount;
 	}
-	SetTextFile(m_Recipes);
+	else
+	{
+		int value = m_SelectedArray[index];
+		m_SelectedArray[index] = 0;
+
+		while (value <= m_RecipeCount)
+		{
+			for (int i = 0; i < m_MAXRECIPES; i++)
+			{
+				if (m_SelectedArray[i] == value)
+				{
+					m_SelectedArray[i]--;
+				}
+			}
+			value++;
+		}
+		--m_RecipeCount;
+	}
+	SetTextFile();
 }
 
 void Application::Reset()
 {
-	m_Recipes = 0;
-	SetTextFile(0);
+	for (int i = 0; i < m_MAXRECIPES; i++)
+	{
+		m_SelectedArray[i] = 0;
+	}
+	SetTextFile();
 }
 
-void Application::SetTextFile(int count)
+int Application::GetButtonIndex()
 {
-	std::wifstream inputrecipesfile;
-	inputrecipesfile.open("Recipes.txt");
-	if (!inputrecipesfile.is_open())
+	for (int i = 0; i < m_MAXRECIPES; i++)
 	{
-		MessageBox(nullptr, nullptr, L"Can not open Recipes.txt", MB_OK);
-		return;
+		int height = 50 * i;
+		if (mouseY > 50 + height + 3 && mouseY <= 100 + height - 3)
+			return i;
 	}
+	return -1;
+}
 
+void Application::SetTextFile()
+{
 	std::wofstream outputfile;
 	outputfile.open("StreamText.txt");
 	if (!outputfile.is_open())
@@ -103,20 +179,21 @@ void Application::SetTextFile(int count)
 		return;
 	}
 
-	std::wstring recipes[m_MAXRECIPES];
+	std::wstring recipeCountString = m_RecipeCountString + std::to_wstring(m_RecipeCount) + L"\n";
+	ID2D1DeviceContext* dc = m_Renderer.GetDeviceContext();
+	m_RecipeCountImage = CreateTextImage(dc, recipeCountString.c_str(), 300.0f, 50.0f, 24.0f, 8.0f);
 
-	for (int i = 0; i < m_MAXRECIPES; i++)
+	outputfile << recipeCountString;
+	for (int count = 1; count <= m_RecipeCount; count++)
 	{
-		std::getline(inputrecipesfile, recipes[i]);
+		for (int i = 0; i < m_MAXRECIPES; i++)
+		{
+			if (m_SelectedArray[i] == count)
+			{
+				outputfile << m_RecipeStrings[i];
+			}
+		}
 	}
-	std::wstring recipetitle = L"Recipes Found: " + std::to_wstring(count) + L"\n";
-	outputfile << recipetitle;
-	for (int i = 0; i < count; i++)
-	{
-		outputfile << recipes[i];
-		outputfile << L"\n";
-	}
-	SetWindowTextW(hWindow, recipetitle.c_str());
 }
 
 LRESULT CALLBACK Application::InternalWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -126,24 +203,36 @@ LRESULT CALLBACK Application::InternalWndProc(HWND hWnd, UINT message, WPARAM wP
 	{
 	case WM_PAINT:
 	{
+		Update();
 		PAINTSTRUCT ps;
 		BeginPaint(hWindow, &ps);
 		EndPaint(hWindow, &ps);
 	}
 	break;
+	case WM_MOUSEMOVE:
+	{
+		mouseX = GET_X_LPARAM(lParam);
+		mouseY = GET_Y_LPARAM(lParam);
+	}
+	break;
 	case WM_LBUTTONDOWN:
 	{
-		IncreaseRecipe();
+		SelectRecipe(GetButtonIndex());
+		RECT rc;
+		GetClientRect(hWnd, &rc);
+		InvalidateRect(hWindow, &rc, TRUE);
 	}
 	break;
 	case WM_RBUTTONDOWN:
 	{
-		DecreaseRecipe();
 	}
 	break;
 	case WM_MBUTTONDOWN:
 	{
 		Reset();
+		RECT rc;
+		GetClientRect(hWnd, &rc);
+		InvalidateRect(hWindow, &rc, TRUE);
 	}
 	break;
 	case WM_DESTROY:
