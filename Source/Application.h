@@ -20,7 +20,8 @@ private:
 	int m_WindowHeight = 450;
 	static const int m_MAXRECIPES = 8;
 	Image m_RecipeCountImage;
-	Image m_Images[8];
+	Image m_Images[m_MAXRECIPES];
+	int m_ButtonArray[m_MAXRECIPES] = { 7, 1, 2, 3, 4, 5, 6, 0 };
 	std::wstring m_RecipeCountString;
 	std::wstring m_RecipeStrings[m_MAXRECIPES];
 	int m_RecipeCount = 0;
@@ -29,5 +30,6 @@ private:
 	int m_SelectedArray[m_MAXRECIPES] = {};
 	int mouseX = -1;
 	int mouseY = -1;
-	ComPtr<ID2D1SolidColorBrush> Brush;
+	ComPtr<ID2D1SolidColorBrush> HighlightBrush;
+	int m_GrabbedIndex = -1;
 };

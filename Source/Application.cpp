@@ -44,7 +44,7 @@ BOOL Application::Init(HINSTANCE hInstance)
 	m_Renderer.Init(hWindow);
 	ID2D1Factory2* factory = m_Renderer.GetFactory();
 	ID2D1DeviceContext* dc = m_Renderer.GetDeviceContext();
-	HR(dc->CreateSolidColorBrush(D2D1::ColorF(0.79f, 0.61f, 0.43f, 1.0f), Brush.ReleaseAndGetAddressOf()));
+	HR(dc->CreateSolidColorBrush(D2D1::ColorF(0.79f, 0.61f, 0.43f, 1.0f), HighlightBrush.ReleaseAndGetAddressOf()));
 
 	m_RecipeCountString = L"Recipes Found: ";
 	m_RecipeStrings[0] = L"Breyerhouse Pie\n";
@@ -102,14 +102,15 @@ void Application::Update()
 		}
 		for (int i = 0; i < m_MAXRECIPES; i++)
 		{
+			int index = m_ButtonArray[i];
 			float height = i * 50.0f + 50.0f;
-			D2D_RECT_F Rect = { 0, height, m_Images[i].m_Size.width, m_Images[i].m_Size.height + height };
-			if (m_SelectedArray[i])
+			D2D_RECT_F Rect = { 0, height, m_Images[index].m_Size.width, m_Images[index].m_Size.height + height };
+			if (m_SelectedArray[index])
 			{
-				D2D_RECT_F Rect2 = { 3, height + 3, m_Images[i].m_Size.width - 3, m_Images[i].m_Size.height + height - 3 };
-				dc->FillRectangle(Rect2, Brush.Get());
+				D2D_RECT_F Rect2 = { 3, height + 3, m_Images[index].m_Size.width - 3, m_Images[index].m_Size.height + height - 3 };
+				dc->FillRectangle(Rect2, HighlightBrush.Get());
 			}
-			dc->DrawBitmap(m_Images[i].m_Bitmap.Get(), Rect, 1.0f);
+			dc->DrawBitmap(m_Images[index].m_Bitmap.Get(), Rect, 1.0f);
 		}
 
 		HR(dc->EndDraw());
@@ -122,16 +123,16 @@ void Application::SelectRecipe(int index)
 	if (index < 0 || index >= m_MAXRECIPES) // return if index out of bounds
 		return;
 
-
-	if (m_SelectedArray[index] == 0)
+	int buttonindex = m_ButtonArray[index];
+	if (m_SelectedArray[buttonindex] == 0)
 	{
 		++m_RecipeCount;
-		m_SelectedArray[index] = m_RecipeCount;
+		m_SelectedArray[buttonindex] = m_RecipeCount;
 	}
 	else
 	{
-		int value = m_SelectedArray[index];
-		m_SelectedArray[index] = 0;
+		int value = m_SelectedArray[buttonindex];
+		m_SelectedArray[buttonindex] = 0;
 
 		while (value <= m_RecipeCount)
 		{
@@ -214,6 +215,11 @@ LRESULT CALLBACK Application::InternalWndProc(HWND hWnd, UINT message, WPARAM wP
 	{
 		mouseX = GET_X_LPARAM(lParam);
 		mouseY = GET_Y_LPARAM(lParam);
+		//if (m_Grabbed)
+		//{
+
+		//}
+		//SetWindowTextW(hWindow, std::to_wstring(GetButtonIndex()).c_str());
 	}
 	break;
 	case WM_LBUTTONDOWN:
@@ -226,6 +232,12 @@ LRESULT CALLBACK Application::InternalWndProc(HWND hWnd, UINT message, WPARAM wP
 	break;
 	case WM_RBUTTONDOWN:
 	{
+		m_GrabbedIndex = GetButtonIndex();
+	}
+	break;
+	case WM_RBUTTONUP:
+	{
+		m_GrabbedIndex = -1;
 	}
 	break;
 	case WM_MBUTTONDOWN:
