@@ -44,7 +44,9 @@ BOOL Application::Init(HINSTANCE hInstance)
 	m_Renderer.Init(hWindow);
 	ID2D1Factory2* factory = m_Renderer.GetFactory();
 	ID2D1DeviceContext* dc = m_Renderer.GetDeviceContext();
-	HR(dc->CreateSolidColorBrush(D2D1::ColorF(0.79f, 0.61f, 0.43f, 1.0f), Brush.ReleaseAndGetAddressOf()));
+	HR(dc->CreateSolidColorBrush(D2D1::ColorF(0.79f, 0.61f, 0.43f, 1.0f), HighlightBrush.ReleaseAndGetAddressOf()));
+	HR(dc->CreateSolidColorBrush(D2D1::ColorF(0.8f, 0.8f, 0.8f, 1.0f), BackGroundBrush.ReleaseAndGetAddressOf()));
+	HR(dc->CreateSolidColorBrush(D2D1::ColorF(0.25f, 0.25f, 0.25f, 1.0f), BorderBrush.ReleaseAndGetAddressOf()));
 
 	m_RecipeCountString = L"Recipes Found: ";
 	m_RecipeStrings[0] = L"Breyerhouse Pie\n";
@@ -63,6 +65,9 @@ BOOL Application::Init(HINSTANCE hInstance)
 		m_Images[i] = CreateTextImage(dc, m_RecipeStrings[i].c_str(), 300.0f, 50.0f, 24.0f, 8.0f);
 	}
 
+	LoadFile();
+	SetTextFile();
+
 	ShowWindow(hWindow, SW_SHOW);
 	UpdateWindow(hWindow);
 
@@ -72,7 +77,6 @@ BOOL Application::Init(HINSTANCE hInstance)
 
 int Application::Run()
 {
-	Reset();
 	MSG msg;
 	while (GetMessage(&msg, nullptr, 0, 0))
 	{
@@ -102,14 +106,49 @@ void Application::Update()
 		}
 		for (int i = 0; i < m_MAXRECIPES; i++)
 		{
-			float height = i * 50.0f + 50.0f;
-			D2D_RECT_F Rect = { 0, height, m_Images[i].m_Size.width, m_Images[i].m_Size.height + height };
-			if (m_SelectedArray[i])
+			if (m_GrabbedIndex != i)
 			{
-				D2D_RECT_F Rect2 = { 3, height + 3, m_Images[i].m_Size.width - 3, m_Images[i].m_Size.height + height - 3 };
-				dc->FillRectangle(Rect2, Brush.Get());
+				int index = m_ButtonArray[i];
+				float height = i * 50.0f + 50.0f;
+				D2D_RECT_F Rect = { 0, height, m_Images[index].m_Size.width, m_Images[index].m_Size.height + height };
+				if (m_SelectedArray[index])
+				{
+					D2D_RECT_F Rect2 = { 3, height + 3, m_Images[index].m_Size.width - 3, m_Images[index].m_Size.height + height - 3 };
+					dc->FillRectangle(Rect2, HighlightBrush.Get());
+				}
+				else
+				{
+					D2D_RECT_F Rect2 = { 3, height + 3, m_Images[index].m_Size.width - 3, m_Images[index].m_Size.height + height - 3 };
+					dc->FillRectangle(Rect2, BackGroundBrush.Get());
+				}
+				{
+					D2D_RECT_F Rect2 = { 3.0f, height + 3.0f, m_Images[index].m_Size.width - 3, m_Images[index].m_Size.height + height - 3.0f };
+					dc->DrawRectangle(Rect2, BorderBrush.Get());
+				}
+				dc->DrawBitmap(m_Images[index].m_Bitmap.Get(), Rect, 1.0f);
 			}
-			dc->DrawBitmap(m_Images[i].m_Bitmap.Get(), Rect, 1.0f);
+		}
+		if (m_GrabbedIndex != -1)
+		{
+			float mousepos = (float)mouseY - (float)m_ButtonGrabHeight;
+			int index = m_ButtonArray[m_GrabbedIndex];
+			float height = min(max(mousepos, 50), 400); // limits dragged button to not go beyond the top or bottom of the window
+			D2D_RECT_F Rect = { 0, height, m_Images[index].m_Size.width, m_Images[index].m_Size.height + height };
+			if (m_SelectedArray[index])
+			{
+				D2D_RECT_F Rect2 = { 3.0f, height + 3.0f, m_Images[index].m_Size.width - 3, m_Images[index].m_Size.height + height - 3.0f };
+				dc->FillRectangle(Rect2, HighlightBrush.Get());
+			}
+			else
+			{
+				D2D_RECT_F Rect2 = { 3, height + 3, m_Images[index].m_Size.width - 3, m_Images[index].m_Size.height + height - 3 };
+				dc->FillRectangle(Rect2, BackGroundBrush.Get());
+			}
+			{
+				D2D_RECT_F Rect2 = { 3.0f, height + 3.0f, m_Images[index].m_Size.width - 3, m_Images[index].m_Size.height + height - 3.0f };
+				dc->DrawRectangle(Rect2, BorderBrush.Get());
+			}
+			dc->DrawBitmap(m_Images[index].m_Bitmap.Get(), Rect, 1.0f);
 		}
 
 		HR(dc->EndDraw());
@@ -122,16 +161,16 @@ void Application::SelectRecipe(int index)
 	if (index < 0 || index >= m_MAXRECIPES) // return if index out of bounds
 		return;
 
-
-	if (m_SelectedArray[index] == 0)
+	int buttonindex = m_ButtonArray[index];
+	if (m_SelectedArray[buttonindex] == 0)
 	{
 		++m_RecipeCount;
-		m_SelectedArray[index] = m_RecipeCount;
+		m_SelectedArray[buttonindex] = m_RecipeCount;
 	}
 	else
 	{
-		int value = m_SelectedArray[index];
-		m_SelectedArray[index] = 0;
+		int value = m_SelectedArray[buttonindex];
+		m_SelectedArray[buttonindex] = 0;
 
 		while (value <= m_RecipeCount)
 		{
@@ -195,6 +234,53 @@ void Application::SetTextFile()
 			}
 		}
 	}
+	SaveFile();
+}
+
+void Application::SaveFile()
+{
+	std::ofstream file;
+	file.open("RecipeConfig.cfg");
+	if (file.is_open())
+	{
+		for (int i = 0; i < m_MAXRECIPES; i++)
+		{
+			file << m_ButtonArray[i];
+			file << " ";
+		}
+		file << "\n";
+		for (int i = 0; i < m_MAXRECIPES; i++)
+		{
+			file << m_SelectedArray[i];
+			file << " ";
+		}
+	}
+}
+
+void Application::LoadFile()
+{
+	std::ifstream file;
+	file.open("RecipeConfig.cfg");
+	if (file.is_open())
+	{
+		for (int i = 0; i < m_MAXRECIPES; i++)
+			file >> m_ButtonArray[i];
+		for (int i = 0; i < m_MAXRECIPES; i++)
+			file >> m_SelectedArray[i];
+	}
+	m_RecipeCount = 0;
+	for (int i = 0; i < m_MAXRECIPES; i++)
+	{
+		if (m_SelectedArray[i] > 0)
+			m_RecipeCount++;
+	}
+}
+
+void SwapButtons(int& a, int& b)
+{
+	int temp = a;
+	a = b;
+	b = temp;
 }
 
 LRESULT CALLBACK Application::InternalWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -214,6 +300,38 @@ LRESULT CALLBACK Application::InternalWndProc(HWND hWnd, UINT message, WPARAM wP
 	{
 		mouseX = GET_X_LPARAM(lParam);
 		mouseY = GET_Y_LPARAM(lParam);
+		if (m_GrabbedIndex > -1)
+		{
+			int currentindex = GetButtonIndex();
+			if (mouseY < 100)
+				currentindex = 0;
+			else if (mouseY > 400)
+				currentindex = 7;
+			if (currentindex != m_GrabbedIndex && currentindex != -1)
+			{
+				// Handles multiple rows at once if the mouse moves fast enough in one frame to skip the next row
+				int distance = currentindex - m_GrabbedIndex;
+				if (distance > 0)
+				{
+					for (int i = 0; i < distance; i++)
+					{
+						SwapButtons(m_ButtonArray[m_GrabbedIndex + 1], m_ButtonArray[m_GrabbedIndex]);
+						m_GrabbedIndex++;
+					}
+				}
+				else if (distance < 0)
+				{
+					for (int i = 0; i < -distance; i++)
+					{
+						SwapButtons(m_ButtonArray[m_GrabbedIndex - 1], m_ButtonArray[m_GrabbedIndex]);
+						m_GrabbedIndex--;
+					}
+				}
+			}
+			RECT rc;
+			GetClientRect(hWnd, &rc);
+			InvalidateRect(hWindow, &rc, TRUE);
+		}
 	}
 	break;
 	case WM_LBUTTONDOWN:
@@ -226,6 +344,29 @@ LRESULT CALLBACK Application::InternalWndProc(HWND hWnd, UINT message, WPARAM wP
 	break;
 	case WM_RBUTTONDOWN:
 	{
+		m_ButtonGrabHeight = mouseY % 50;
+		m_GrabbedIndex = GetButtonIndex();
+		if (m_GrabbedIndex > -1)
+		{
+			SetCapture(hWindow);
+		}
+		RECT rc;
+		GetClientRect(hWnd, &rc);
+		InvalidateRect(hWindow, &rc, TRUE);
+	}
+	break;
+	case WM_KILLFOCUS:
+	case WM_RBUTTONUP:
+	{
+		if (m_GrabbedIndex > -1)
+		{
+			ReleaseCapture();
+			m_GrabbedIndex = -1;
+			RECT rc;
+			GetClientRect(hWnd, &rc);
+			InvalidateRect(hWindow, &rc, TRUE);
+			SaveFile();
+		}
 	}
 	break;
 	case WM_MBUTTONDOWN:
